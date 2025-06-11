@@ -5,104 +5,130 @@ import json
 import logging
 import string
 import sys
-from typing import Any
+from datetime import datetime
+from typing import NoReturn
 
 import requests
 
 
 class CheckDroneBuilds:
-    def __init__(self, args: argparse.Namespace):
-        self.server = args.server
-        self.token = args.token
-        self.critical = args.critical
-        self.warning = args.warning
-        log = logging.getLogger("urllib3")
+    def __init__(self, server: str, token: str, namespace: str, warning: int, critical: int, verbose: bool = False):
+        self.server = server
+        self.token = token
+        self.namespace = namespace
+        self.critical = critical
+        self.warning = warning
+
+        log = logging.getLogger(__name__)
         stream = logging.StreamHandler()
-        if args.verbose:
-            log.setLevel(logging.DEBUG)
-            stream.setLevel(logging.DEBUG)
+        level = logging.DEBUG if verbose else logging.CRITICAL
+        log.setLevel(level)
+        stream.setLevel(level)
         log.addHandler(stream)
+        
         self.log = log
 
-    def check_builds_all_repos(self) -> None:
-        repos = []
-        failed = []
-        running = []
-        unknown = []
-
+    def check_builds(self) -> None:
         try:
-            repos = self.get_repos(self.server, self.token)
+            repos = self.get_all_repos()
         except Exception as e:
+            self.log.exception(str(e))
             self.nagios_exit("CRITICAL", f"Error retrieving repos: {str(e)}")
 
+        successful = []
+        warning = []
+        critical = []
+        unknown = []
+
         for repo in repos:
-            owner = repo.get("namespace")
-            name = repo.get("name")
-            slug = f"{owner}/{name}"
+            try:
+                owner = repo.get("namespace")
+                name = repo.get("name")
+                slug = repo.get("slug")
+            except Exception as e:
+                self.log.exception(str(e))
+                self.log.debug(json.dumps(repo))
+                self.nagios_exit("CRITICAL", f"Repo API response missing expected data: {str(e)}")
+
+            last_successful_build = 0
 
             try:
-                status, number = self.get_latest_build(self.server, self.token, owner, name)
-            except Exception:
+                builds = self.get_builds_for_repo(owner, name)
+                if not builds:
+                    unknown.append(slug)
+                    self.log.debug(f"No builds found for {slug}, skipping")
+                    continue
+                for build in builds:
+                    if build.get("status") == "success":
+                        if build.get("finished") > last_successful_build:
+                            last_successful_build = build.get("finished")
+
+            except Exception as e:
+                self.log.exception(str(e))
                 unknown.append(slug)
                 continue
 
-            if status == "success":
-                continue
-            elif status == "failure":
-                failed.append(f"{slug} (#{number})")
-            elif status == "running":
-                running.append(f"{slug} (#{number})")
-            else:
-                unknown.append(f"{slug} (#{number or '?'})")
+            last_successful_build_string = f"{slug} - last succeeded: {self.time_ago(last_successful_build)}"
+            warning_threshold = self.get_current_time() - self.warning
+            critical_threshold = self.get_current_time() - self.critical
+            self.log.debug(f"{slug} - Warning: {warning_threshold} - Critical: {critical_threshold} - Actual: {last_successful_build}")
+            if warning_threshold <= last_successful_build != 0 and critical_threshold <= last_successful_build:
+                successful.append(last_successful_build_string)
+            elif critical_threshold > last_successful_build or last_successful_build == 0:
+                critical.append(last_successful_build_string)
+            elif warning_threshold > last_successful_build:
+                warning.append(last_successful_build_string)
 
-        if len(failed) >= self.critical:
-            self.nagios_exit("CRITICAL", f"Failing build(s): {', '.join(failed)}")
-        elif len(failed) >= self.warning:
-            self.nagios_exit("WARNING", f"Failing build(s): {', '.join(failed)}")
-        elif unknown:
-            self.nagios_exit("UNKNOWN", f"Unknown statuses: {', '.join(unknown)}")
+        if critical:
+            self.nagios_exit("CRITICAL", f"Failing build(s): {', '.join(critical)}")
+        elif warning:
+            self.nagios_exit("WARNING", f"Failing build(s): {', '.join(warning)}")
+        elif successful:
+            self.nagios_exit("OK", f"BUILDS OK: {', '.join(successful)}")
         else:
-            self.nagios_exit("OK", "All builds are successful")
+            self.nagios_exit("UNKNOWN", f"Unknown build status: {', '.join(unknown)}")
 
-    def get_repos(self, drone_server, token) -> dict:
-        headers = {"Authorization": f"Bearer {token}"}
-        url = f"https://{drone_server}/api/user/repos"
+    def get_all_repos(self) -> list:
+        headers = {"Authorization": f"Bearer {self.token}"}
+        url = f"https://{self.server}/api/user/repos"
         response = requests.get(url, headers=headers)
-        status_code = response.status_code
-
-        try:
-            data = response.json()
-            self.log.debug(json.dumps(data, indent=4))
-        except Exception:
-            self.nagios_exit("UNKNOWN", f"Drone API did not respond with valid JSON (Returned code HTTP {status_code})")
+        status_code = int(response.status_code)
 
         if status_code != 200:
+            self.log.debug(response.text)
             self.nagios_exit("UNKNOWN", f"Drone API /api/user/repos HTTP status code is {status_code}")
-        data = response.json()
+            
+        try:
+            data = response.json()
+            assert isinstance(data, list), "Returned json does not contain a list"
+            self.log.debug(json.dumps(data, indent=4))
+        except Exception as e:
+            self.log.exception(str(e))
+            self.nagios_exit("UNKNOWN", f"Drone API did not respond with valid JSON (Returned code HTTP {status_code})")
+
         self.log.debug(json.dumps(data, indent=4))
         return data
 
-    def get_latest_build(self, drone_server, token, owner, repo) -> tuple[Any, Any]:
-        headers = {"Authorization": f"Bearer {token}"}
-        url = f"https://{drone_server}/api/repos/{owner}/{repo}/builds"
+    def get_builds_for_repo(self, owner: string, repo: string) -> list | None:
+        headers = {"Authorization": f"Bearer {self.token}"}
+        url = f"https://{self.server}/api/repos/{owner}/{repo}/builds"
         response = requests.get(url, headers=headers)
-        status_code = response.status_code
-        data = None
-
-        try:
-            data = response.json()
-            self.log.debug(json.dumps(data, indent=4))
-        except Exception:
-            self.nagios_exit("UNKNOWN", f"Drone API did not respond with valid JSON for /api/repos/{owner}/{repo}/builds (Returned code HTTP {status_code})")
+        status_code = int(response.status_code)
 
         if status_code != 200:
             self.nagios_exit("UNKNOWN", f"Drone API /api/repos/{owner}/{repo}/builds HTTP status code is {status_code}")
 
-        if not data:
-            return None, None
-        return data[0]["status"], data[0]["number"]
+        try:
+            data = response.json()
+            assert isinstance(data, list), "Returned json does not contain a list"
+            self.log.debug(json.dumps(data, indent=4))
+        except Exception as e:
+            self.log.exception(str(e))
+            self.nagios_exit("UNKNOWN", f"Drone API did not respond with valid JSON for /api/repos/{owner}/{repo}/builds (Returned code HTTP {status_code})")
 
-    def nagios_exit(self, status: string, message: string) -> None:
+        return data
+
+    def nagios_exit(self, status: string, message: string) -> NoReturn:
         codes = {
             "OK"      : 0,
             "WARNING" : 1,
@@ -112,8 +138,32 @@ class CheckDroneBuilds:
         print(f"{status} - {message}")
         sys.exit(codes[status])
 
+    def get_current_time(self) -> int:
+        return int(datetime.now().timestamp())
 
-if __name__ == "__main__":
+    def time_ago(self, timestamp: int) -> string:
+        if timestamp == 0:
+            return "Unknown"
+
+        now = datetime.fromtimestamp(self.get_current_time())
+        past_time = datetime.fromtimestamp(timestamp)
+        difference = now - past_time
+
+        seconds = difference.total_seconds()
+
+        if seconds < 60:
+            return f"{int(seconds)} second{'s' if seconds != 1 else ''} ago"
+        elif seconds < 3600:
+            minutes = seconds // 60
+            return f"{int(minutes)} minute{'s' if minutes != 1 else ''} ago"
+        elif seconds < 86400:
+            hours = seconds // 3600
+            return f"{int(hours)} hour{'s' if hours != 1 else ''} ago"
+        else:
+            days = seconds // 86400
+            return f"{int(days)} day{'s' if days != 1 else ''} ago"
+
+def main():
     parser = argparse.ArgumentParser(
         description="Drone build check all repositories",
     )
@@ -121,27 +171,33 @@ if __name__ == "__main__":
     required.add_argument(
         "--server",
         "-s",
-        type=int,
+        type=str,
         metavar="<DRONE_SERVER>",
-        help="URL of the Drone server without https",
+        help="URL of the Drone server (without https)",
         required=True,
     )
     required.add_argument(
         "--token",
         "-t",
-        type=int,
+        type=str,
         metavar="<DRONE_TOKEN>",
-        help="Token to access drone repositories",
+        help="Token to access drone server repositories",
         required=True,
     )
     parser.add_argument(
-        "--warning", "-w", type=int, metavar="<#BUILDS>", help="warning - amount of builds failed", default=0
+        "--namespace", "-n", type=str, metavar="<NAMESPACE>", help="Optional namespace to filter the repositories to check", default=""
     )
     parser.add_argument(
-        "--critical", "-c", type=int, metavar="<#BUILDS>", help="critical -  amount of builds failed", default=0
+        "--warning", "-w", type=int, metavar="<SECONDS>", help="# of seconds since the last successful build", default=9999999999
+    )
+    parser.add_argument(
+        "--critical", "-c", type=int, metavar="<SECONDS>", help="# of seconds since the last successful build", default=9999999999
     )
     parser.add_argument("--verbose", "-v", action="store_true")
-    parseargs = parser.parse_args()
+    args = parser.parse_args()
 
-    check = CheckDroneBuilds(parseargs)
-    check.check_builds_all_repos()
+    check = CheckDroneBuilds(args.server, args.token, args.namespace, args.warning, args.critical, args.verbose)
+    check.check_builds()
+
+if __name__ == "__main__":
+    main()

@@ -1,7 +1,7 @@
 [project]
 name = "check-drone-builds"
-version = "0.1.0"
-description = "Add your description here"
+version = "1.0.0"
+description = "Icinga2 check to monitor all builds are in the green"
 requires-python = ">=3.12"
 dependencies = [
     "requests>=2.32.3",
@@ -10,4 +10,5 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.3.5",
+    "ruff>=0.11.11",
 ]
