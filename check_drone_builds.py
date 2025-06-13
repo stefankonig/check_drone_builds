@@ -199,5 +199,5 @@ def main():
     check = CheckDroneBuilds(args.server, args.token, args.namespace, args.warning, args.critical, args.verbose)
     check.check_builds()
 
-if __name__ == "__main__":
+if __name__ == "__main__": # pragma: no cover
     main()

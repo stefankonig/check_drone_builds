@@ -1,4 +1,6 @@
 import string
+from datetime import datetime
+
 import pytest
 import json
 import re
@@ -145,7 +147,7 @@ def test_check_builds_empty_without_time() -> None:
     check = CheckDroneBuilds(SERVER, TOKEN, NAMESPACE, 9999999999, 9999999999, True)
     check_builds_empty_builds(check)
 
-def test_check_builds_build_exception():
+def test_check_builds_get_all_repos_exception() -> None:
     check = CheckDroneBuilds(SERVER, TOKEN, NAMESPACE, 2, 1)
     check.get_all_repos = MagicMock()
     check.nagios_exit = MagicMock()
@@ -159,7 +161,7 @@ def test_check_builds_build_exception():
         pass
     check.nagios_exit.assert_called_once_with("CRITICAL", "Error retrieving repos: An error occurred")
 
-def test_check_builds_incomplete_data():
+def test_check_builds_get_all_repos_incomplete_data() -> None:
     check = CheckDroneBuilds(SERVER, TOKEN, NAMESPACE, 2, 1)
     check.get_all_repos = MagicMock()
     check.nagios_exit = MagicMock()
@@ -173,7 +175,41 @@ def test_check_builds_incomplete_data():
         pass
     check.nagios_exit.assert_called_once_with("CRITICAL", "Repo API response missing expected data: 'str' object has no attribute 'get'")
 
-def mocked_requests_get(*args, **kwargs):
+def test_check_builds_get_builds_for_repo_exception() -> None:
+    check = CheckDroneBuilds(SERVER, TOKEN, NAMESPACE, 2, 1)
+    check.get_all_repos = MagicMock()
+    check.get_builds_for_repo = MagicMock()
+    check.nagios_exit = MagicMock()
+
+    repo = [get_all_repos_json()[0]]
+    check.get_all_repos.return_value = repo
+    check.get_builds_for_repo.side_effect = ValueError("An error occurred")
+    check.nagios_exit.side_effect = ValueError("STOP") # just so it stops executing any other code, as it would in IRL
+
+    try:
+        check.check_builds()
+    except Exception:
+        pass
+    check.nagios_exit.assert_called_once_with("UNKNOWN", "Unknown build status: docker/test-1")
+
+def test_check_builds_get_builds_for_repo_incomplete_data() -> None:
+    check = CheckDroneBuilds(SERVER, TOKEN, NAMESPACE, 2, 1)
+    check.get_all_repos = MagicMock()
+    check.get_builds_for_repo = MagicMock()
+    check.nagios_exit = MagicMock()
+
+    repo = [get_all_repos_json()[0]]
+    check.get_all_repos.return_value = repo
+    check.get_builds_for_repo.return_value = "Lassie"
+    check.nagios_exit.side_effect = ValueError("STOP") # just so it stops executing any other code, as it would in IRL
+
+    try:
+        check.check_builds()
+    except Exception:
+        pass
+    check.nagios_exit.assert_called_once_with("UNKNOWN", "Unknown build status: docker/test-1")
+
+def mocked_requests_get(*args, **kwargs) -> Response | None:
     request_url = args[0]
     auth_header = kwargs['headers']['Authorization']
     assert auth_header == f"Bearer {TOKEN}"
@@ -199,13 +235,13 @@ def mocked_requests_get(*args, **kwargs):
         return None
 
 @patch("requests.get", side_effect=mocked_requests_get)
-def test_get_all_repos(mock_get, capsys):
+def test_get_all_repos(mock_get, capsys) -> None:
     check = CheckDroneBuilds(f"{SERVER}:200", TOKEN, NAMESPACE, 0, 0)
     repos = check.get_all_repos()
     assert repos == get_all_repos_json()
 
 @patch("requests.get", side_effect=mocked_requests_get)
-def test_get_all_repos_error(mock_get, capsys):
+def test_get_all_repos_error(mock_get, capsys) -> None:
     check = CheckDroneBuilds(f"{SERVER}:401", TOKEN, NAMESPACE, 0, 0)
     check.nagios_exit = MagicMock()
     check.nagios_exit.side_effect = ValueError("STOP")  # just so it stops executing any other code, as it would in IRL
@@ -216,7 +252,7 @@ def test_get_all_repos_error(mock_get, capsys):
     check.nagios_exit.assert_called_once_with("UNKNOWN", "Drone API /api/user/repos HTTP status code is 401")
 
 @patch("requests.get", side_effect=mocked_requests_get)
-def test_get_all_repos_error_malformed(mock_get, capsys):
+def test_get_all_repos_error_malformed(mock_get) -> None:
     check = CheckDroneBuilds(f"{SERVER}:201", TOKEN, NAMESPACE, 0, 0)
     check.nagios_exit = MagicMock()
     check.nagios_exit.side_effect = ValueError("STOP")  # just so it stops executing any other code, as it would in IRL
@@ -227,7 +263,7 @@ def test_get_all_repos_error_malformed(mock_get, capsys):
     check.nagios_exit.assert_called_once_with("UNKNOWN", "Drone API did not respond with valid JSON (Returned code HTTP 200)")
 
 @patch("requests.get", side_effect=mocked_requests_get)
-def test_get_all_repos_error_weird_json(mock_get, capsys):
+def test_get_all_repos_error_weird_json(mock_get) -> None:
     check = CheckDroneBuilds(f"{SERVER}:202", TOKEN, NAMESPACE, 0, 0)
     check.nagios_exit = MagicMock()
     check.nagios_exit.side_effect = ValueError("STOP")  # just so it stops executing any other code, as it would in IRL
@@ -238,37 +274,115 @@ def test_get_all_repos_error_weird_json(mock_get, capsys):
     check.nagios_exit.assert_called_once_with("UNKNOWN", "Drone API did not respond with valid JSON (Returned code HTTP 200)")
 
 @patch("requests.get", side_effect=mocked_requests_get)
-def test_get_builds_for_repo(mock_get, capsys):
+def test_get_builds_for_repo(mock_get) -> None:
     check = CheckDroneBuilds(f"{SERVER}:200", TOKEN, NAMESPACE, 0, 0)
     builds = check.get_builds_for_repo('docker', 'test-4')
     assert builds == get_builds_json('docker', 'test-4')
 
 @patch("requests.get", side_effect=mocked_requests_get)
-def test_get_builds_for_repo_error(mock_get, capsys):
+def test_get_builds_for_repo_error(mock_get):
     check = CheckDroneBuilds(f"{SERVER}:401", TOKEN, NAMESPACE, 0, 0)
     check.nagios_exit = MagicMock()
-    check.get_all_repos()
-    check.nagios_exit.assert_called_once_with("UNKNOWN", "Drone API /api/user/repos HTTP status code is 401")
+    check.nagios_exit.side_effect = ValueError("STOP")  # just so it stops executing any other code, as it would in IRL
+    try:
+        check.get_builds_for_repo("docker", "test-1")
+    except Exception:
+        pass
+    check.nagios_exit.assert_called_once_with("UNKNOWN", "Drone API /api/repos/docker/test-1/builds HTTP status code is 401")
 
 @patch("requests.get", side_effect=mocked_requests_get)
-def test_get_builds_for_repo_error_malformed(mock_get, capsys):
+def test_get_builds_for_repo_error_malformed(mock_get) -> None:
     check = CheckDroneBuilds(f"{SERVER}:201", TOKEN, NAMESPACE, 0, 0)
     check.nagios_exit = MagicMock()
     check.nagios_exit.side_effect = ValueError("STOP")  # just so it stops executing any other code, as it would in IRL
     try:
-        check.get_all_repos()
+        check.get_builds_for_repo("docker", "test-1")
     except Exception:
         pass
-    check.nagios_exit.assert_called_once_with("UNKNOWN", "Drone API did not respond with valid JSON (Returned code HTTP 200)")
+    check.nagios_exit.assert_called_once_with("UNKNOWN", "Drone API did not respond with valid JSON for /api/repos/docker/test-1/builds (Returned code HTTP 200)")
 
 @patch("requests.get", side_effect=mocked_requests_get)
-def test_get_builds_for_repo_error_weird_json(mock_get, capsys):
+def test_get_builds_for_repo_error_weird_json(mock_get) -> None:
     check = CheckDroneBuilds(f"{SERVER}:202", TOKEN, NAMESPACE, 0, 0)
     check.nagios_exit = MagicMock()
     check.nagios_exit.side_effect = ValueError("STOP")  # just so it stops executing any other code, as it would in IRL
     try:
-        check.get_all_repos()
+        check.get_builds_for_repo("docker", "test-1")
     except Exception:
         pass
-    check.nagios_exit.assert_called_once_with("UNKNOWN", "Drone API did not respond with valid JSON (Returned code HTTP 200)")
+    check.nagios_exit.assert_called_once_with("UNKNOWN", "Drone API did not respond with valid JSON for /api/repos/docker/test-1/builds (Returned code HTTP 200)")
+
+def test_nagios_exit_ok(capsys) -> None:
+    check = CheckDroneBuilds(SERVER, TOKEN, NAMESPACE, 2, 1)
+    # the try except is just here to keep pycharm happy about nagios_exit having NoReturn return type
+    try:
+        with pytest.raises(SystemExit) as system_exit:
+            check.nagios_exit("OK", "Test") # type: ignore
+    except SystemExit:
+        pass
+    captured = capsys.readouterr()
+    assert captured.out == "OK - Test\n"
+    assert system_exit.value.args[0] == 0
+
+def test_nagios_exit_warning(capsys) -> None:
+    check = CheckDroneBuilds(SERVER, TOKEN, NAMESPACE, 2, 1)
+    # the try except is just here to keep pycharm happy about nagios_exit having NoReturn return type
+    try:
+        with pytest.raises(SystemExit) as system_exit:
+            check.nagios_exit("WARNING", "Test") # type: ignore
+    except SystemExit:
+        pass
+    captured = capsys.readouterr()
+    assert captured.out == "WARNING - Test\n"
+    assert system_exit.value.args[0] == 1
+
+def test_nagios_exit_critical(capsys) -> None:
+    check = CheckDroneBuilds(SERVER, TOKEN, NAMESPACE, 2, 1)
+    # the try except is just here to keep pycharm happy about nagios_exit having NoReturn return type
+    try:
+        with pytest.raises(SystemExit) as system_exit:
+            check.nagios_exit("CRITICAL", "Test") # type: ignore
+    except SystemExit:
+        pass
+    captured = capsys.readouterr()
+    assert captured.out == "CRITICAL - Test\n"
+    assert system_exit.value.args[0] == 2
+
+def test_nagios_exit_unknown(capsys) -> None:
+    check = CheckDroneBuilds(SERVER, TOKEN, NAMESPACE, 2, 1)
+    # the try except is just here to keep pycharm happy about nagios_exit having NoReturn return type
+    try:
+        with pytest.raises(SystemExit) as system_exit:
+            check.nagios_exit("UNKNOWN", "Test") # type: ignore
+    except SystemExit:
+        pass
+    captured = capsys.readouterr()
+    assert captured.out == "UNKNOWN - Test\n"
+    assert system_exit.value.args[0] == 3
+
+def test_time_ago() -> None:
+    check = CheckDroneBuilds(SERVER, TOKEN, NAMESPACE, 2, 1)
+    check.get_current_time = MagicMock()
+    
+    timestamp = int(datetime.now().timestamp())
+    check.get_current_time.return_value = timestamp
+    assert check.time_ago(timestamp - 1) == "1 second ago"
+    check.get_current_time.return_value = timestamp
+    assert check.time_ago(timestamp - 2) == "2 seconds ago"
+    check.get_current_time.return_value = timestamp
+    assert check.time_ago(timestamp - 61) == "1 minute ago"
+    check.get_current_time.return_value = timestamp
+    assert check.time_ago(timestamp - 121) == "2 minutes ago"
+    check.get_current_time.return_value = timestamp
+    assert check.time_ago(timestamp - 3601) == "1 hour ago"
+    check.get_current_time.return_value = timestamp
+    assert check.time_ago(timestamp - 7201) == "2 hours ago"
+    check.get_current_time.return_value = timestamp
+    assert check.time_ago(timestamp - 86401) == "1 day ago"
+    check.get_current_time.return_value = timestamp
+    assert check.time_ago(timestamp - 172802) == "2 days ago"
+
+def test_current_time() -> None:
+    check = CheckDroneBuilds(SERVER, TOKEN, NAMESPACE, 2, 1)
+    assert check.get_current_time() == int(datetime.now().timestamp())
 
