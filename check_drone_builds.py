@@ -45,7 +45,7 @@ class CheckDroneBuilds:
                 owner = repo.get("namespace")
                 name = repo.get("name")
                 slug = repo.get("slug")
-                if owner != self.namespace:
+                if self.namespace and owner != self.namespace:
                     continue
             except Exception as e:
                 self.log.exception(str(e))
