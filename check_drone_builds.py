@@ -45,6 +45,8 @@ class CheckDroneBuilds:
                 owner = repo.get("namespace")
                 name = repo.get("name")
                 slug = repo.get("slug")
+                if owner != self.namespace:
+                    continue
             except Exception as e:
                 self.log.exception(str(e))
                 self.log.debug(json.dumps(repo))
@@ -90,7 +92,8 @@ class CheckDroneBuilds:
 
     def get_all_repos(self) -> list:
         headers = {"Authorization": f"Bearer {self.token}"}
-        url = f"https://{self.server}/api/user/repos"
+        # this call has no upper limit (v2.11.1
+        url = f"https://{self.server}/api/user/repos?per_page=1000"
         response = requests.get(url, headers=headers)
         status_code = int(response.status_code)
 
@@ -111,6 +114,7 @@ class CheckDroneBuilds:
 
     def get_builds_for_repo(self, owner: string, repo: string) -> list | None:
         headers = {"Authorization": f"Bearer {self.token}"}
+        # by default, it only returns 25 results, can up it to max 100 with ?per_page=100 and iterate with ?page=X
         url = f"https://{self.server}/api/repos/{owner}/{repo}/builds"
         response = requests.get(url, headers=headers)
         status_code = int(response.status_code)

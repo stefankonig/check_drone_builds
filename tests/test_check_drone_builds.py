@@ -4,7 +4,7 @@ from datetime import datetime
 import pytest
 import json
 import re
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call
 from check_drone_builds import main
 from check_drone_builds import CheckDroneBuilds
 from requests.models import Response
@@ -147,6 +147,31 @@ def test_check_builds_empty_without_time() -> None:
     check = CheckDroneBuilds(SERVER, TOKEN, NAMESPACE, 9999999999, 9999999999, True)
     check_builds_empty_builds(check)
 
+def test_check_builds_get_all_repos_multiple() -> None:
+    check = CheckDroneBuilds(SERVER, TOKEN, NAMESPACE, 86400, 172800, True)
+    repos = get_all_repos_json()
+    check.get_all_repos = MagicMock()
+    check.get_builds_for_repo = MagicMock()
+    check.nagios_exit = MagicMock()
+    check.get_current_time = MagicMock()
+
+    check.get_all_repos.return_value = repos
+    # just return the same build info always, not relevant in this test
+    check.get_builds_for_repo.return_value = get_builds_json(repos[0]["namespace"], repos[0]["name"])
+    check.get_current_time.return_value = TIME
+
+    check.check_builds()
+
+    check.get_all_repos.assert_called_once_with()
+    check.get_builds_for_repo.assert_has_calls([
+        call(repos[0]["namespace"], repos[0]["name"]),
+        call(repos[1]["namespace"], repos[1]["name"]),
+        call(repos[2]["namespace"], repos[2]["name"]),
+        call(repos[3]["namespace"], repos[3]["name"]),
+    ])
+    assert check.get_builds_for_repo.call_count == 4
+    check.nagios_exit.assert_called_once_with("OK", "BUILDS OK: docker/test-1 - last succeeded: 1 day ago, docker/test-2 - last succeeded: 1 day ago, docker/test-3 - last succeeded: 1 day ago, docker/test-4 - last succeeded: 1 day ago")
+
 def test_check_builds_get_all_repos_exception() -> None:
     check = CheckDroneBuilds(SERVER, TOKEN, NAMESPACE, 2, 1)
     check.get_all_repos = MagicMock()
@@ -214,12 +239,12 @@ def mocked_requests_get(*args, **kwargs) -> Response | None:
     auth_header = kwargs['headers']['Authorization']
     assert auth_header == f"Bearer {TOKEN}"
 
-    match  = re.search(f"^https:\/\/{SERVER}:(?P<response_code>\d+)\/api/(?P<uri>\S+)$", request_url)
+    match  = re.search(f"^https:\\/\\/{SERVER}:(?P<response_code>\\d+)\\/api/(?P<uri>\\S+)$", request_url)
 
     if match:
         response_code = int(match.group('response_code'))
         uri = match.group('uri')
-        optional_query_params = re.search("(?P<uri>\S+)\?(?P<query>\S+)",uri)
+        optional_query_params = re.search("(?P<uri>\\S+)\\?(?P<query>\\S+)",uri)
         if optional_query_params:
             # not checking the query is correct :( letting it bite some dust
             uri = optional_query_params.group('uri')
