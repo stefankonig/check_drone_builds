@@ -270,7 +270,6 @@ def test_check_builds_get_all_repos_multiple_statuses_unknown() -> None:
 
 def test_check_builds_get_all_repos_no_repos() -> None:
     check = CheckDroneBuilds(SERVER, TOKEN, "", 86400, 172800, True)
-    repos = get_all_repos_json()
     check.get_all_repos = MagicMock()
     check.nagios_exit = MagicMock()
     check.get_current_time = MagicMock()
