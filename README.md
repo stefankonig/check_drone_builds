@@ -1,4 +1,4 @@
-# check-drone-builds
+# check_drone_builds
 
 Icinga2 check to monitor whether your drone builds are all passing.  
 The script has been written and tested on python 3.12 for usage on Ubuntu 24.04 and Debian 12.
