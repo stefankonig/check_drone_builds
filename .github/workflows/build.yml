@@ -1,4 +1,4 @@
-name: test-cov
+name: build
 on:
   push:
     branches: [ "main" ]
@@ -6,7 +6,7 @@ permissions:
   contents: write
 jobs:
   test:
-    name: test-cov
+    name: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@main
