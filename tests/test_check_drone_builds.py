@@ -199,6 +199,87 @@ def test_check_builds_get_all_repos_no_namespace_to_filter() -> None:
     assert check.get_builds_for_repo.call_count == 6
     check.nagios_exit.assert_called_once_with("OK", "BUILDS OK: docker/test-1 - last succeeded: 1 day ago, docker/test-2 - last succeeded: 1 day ago, docker/test-3 - last succeeded: 1 day ago, docker/test-4 - last succeeded: 1 day ago, random/test-666 - last succeeded: 1 day ago, random/test-777 - last succeeded: 1 day ago")
 
+def test_check_builds_get_all_repos_multiple_statuses_critical() -> None:
+    check = CheckDroneBuilds(SERVER, TOKEN, "", 86400, 172800, True)
+    repos = get_all_repos_json()
+    check.get_all_repos = MagicMock()
+    check.nagios_exit = MagicMock()
+    check.get_current_time = MagicMock()
+
+    check.get_all_repos.return_value = repos
+    with patch("check_drone_builds.CheckDroneBuilds.get_builds_for_repo") as mock_repo:
+        # Set up the mock to return different values on consecutive calls
+        mock_repo.side_effect = [
+            get_builds_json(repos[0]["namespace"], repos[0]["name"]),
+            get_builds_json(repos[1]["namespace"], repos[1]["name"]),
+            get_builds_json(repos[2]["namespace"], repos[2]["name"]),
+            get_builds_json(repos[3]["namespace"], repos[3]["name"]),
+            get_builds_json(repos[3]["namespace"], repos[3]["name"]),
+            get_builds_json(repos[3]["namespace"], repos[3]["name"]),
+        ]
+
+        check.get_current_time.return_value = TIME
+        check.check_builds()
+        check.nagios_exit.assert_called_once_with("CRITICAL", "Failing build(s): docker/test-2 - last succeeded: Unknown, docker/test-3 - last succeeded: 140 days ago")
+
+def test_check_builds_get_all_repos_multiple_statuses_warning() -> None:
+    check = CheckDroneBuilds(SERVER, TOKEN, "", 300, 999999999, True)
+    repos = get_all_repos_json()
+    check.get_all_repos = MagicMock()
+    check.nagios_exit = MagicMock()
+    check.get_current_time = MagicMock()
+
+    check.get_all_repos.return_value = repos
+    with patch("check_drone_builds.CheckDroneBuilds.get_builds_for_repo") as mock_repo:
+        # Set up the mock to return different values on consecutive calls
+        mock_repo.side_effect = [
+            get_builds_json(repos[0]["namespace"], repos[0]["name"]),
+            get_builds_json(repos[2]["namespace"], repos[2]["name"]),
+            get_builds_json(repos[3]["namespace"], repos[3]["name"]),
+            get_builds_json(repos[3]["namespace"], repos[3]["name"]),
+            get_builds_json(repos[3]["namespace"], repos[3]["name"]),
+            get_builds_json(repos[3]["namespace"], repos[3]["name"]),
+        ]
+
+        check.get_current_time.return_value = TIME
+        check.check_builds()
+        check.nagios_exit.assert_called_once_with("WARNING", "Failing build(s): docker/test-1 - last succeeded: 1 day ago, docker/test-2 - last succeeded: 140 days ago")
+
+def test_check_builds_get_all_repos_multiple_statuses_unknown() -> None:
+    check = CheckDroneBuilds(SERVER, TOKEN, "", 86400, 172800, True)
+    repos = get_all_repos_json()
+    check.get_all_repos = MagicMock()
+    check.nagios_exit = MagicMock()
+    check.get_current_time = MagicMock()
+
+    check.get_all_repos.return_value = repos
+    with patch("check_drone_builds.CheckDroneBuilds.get_builds_for_repo") as mock_repo:
+        # Set up the mock to return different values on consecutive calls
+        mock_repo.side_effect = [
+            get_builds_json(repos[0]["namespace"], repos[0]["name"]),
+            get_builds_json(repos[0]["namespace"], repos[0]["name"]),
+            get_builds_json(repos[0]["namespace"], repos[0]["name"]),
+            get_builds_json(repos[0]["namespace"], repos[0]["name"]),
+            get_builds_json(repos[0]["namespace"], repos[0]["name"]),
+            get_builds_json(repos[3]["namespace"], repos[3]["name"]),
+        ]
+
+        check.get_current_time.return_value = TIME
+        check.check_builds()
+        check.nagios_exit.assert_called_once_with("UNKNOWN", "Unknown build status: random/test-777")
+
+def test_check_builds_get_all_repos_no_repos() -> None:
+    check = CheckDroneBuilds(SERVER, TOKEN, "", 86400, 172800, True)
+    repos = get_all_repos_json()
+    check.get_all_repos = MagicMock()
+    check.nagios_exit = MagicMock()
+    check.get_current_time = MagicMock()
+
+    check.get_all_repos.return_value = []
+    check.get_current_time.return_value = TIME
+    check.check_builds()
+    check.nagios_exit.assert_called_once_with("UNKNOWN", "No repos/builds found")
+
 def test_check_builds_get_all_repos_exception() -> None:
     check = CheckDroneBuilds(SERVER, TOKEN, NAMESPACE, 2, 1)
     check.get_all_repos = MagicMock()
@@ -415,7 +496,7 @@ def test_nagios_exit_unknown(capsys) -> None:
 def test_time_ago() -> None:
     check = CheckDroneBuilds(SERVER, TOKEN, NAMESPACE, 2, 1)
     check.get_current_time = MagicMock()
-    
+
     timestamp = int(datetime.now().timestamp())
     check.get_current_time.return_value = timestamp
     assert check.time_ago(timestamp - 1) == "1 second ago"
@@ -433,6 +514,7 @@ def test_time_ago() -> None:
     assert check.time_ago(timestamp - 86401) == "1 day ago"
     check.get_current_time.return_value = timestamp
     assert check.time_ago(timestamp - 172802) == "2 days ago"
+    assert check.time_ago(0) == "Unknown"
 
 def test_current_time() -> None:
     check = CheckDroneBuilds(SERVER, TOKEN, NAMESPACE, 2, 1)

@@ -85,10 +85,12 @@ class CheckDroneBuilds:
             self.nagios_exit("CRITICAL", f"Failing build(s): {', '.join(critical)}")
         elif warning:
             self.nagios_exit("WARNING", f"Failing build(s): {', '.join(warning)}")
+        elif unknown:
+            self.nagios_exit("UNKNOWN", f"Unknown build status: {', '.join(unknown)}")
         elif successful:
             self.nagios_exit("OK", f"BUILDS OK: {', '.join(successful)}")
         else:
-            self.nagios_exit("UNKNOWN", f"Unknown build status: {', '.join(unknown)}")
+            self.nagios_exit("UNKNOWN", "No repos/builds found")
 
     def get_all_repos(self) -> list:
         headers = {"Authorization": f"Bearer {self.token}"}
