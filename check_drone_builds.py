@@ -88,7 +88,7 @@ class CheckDroneBuilds:
         elif unknown:
             self.nagios_exit("UNKNOWN", f"Unknown build status: {', '.join(unknown)}")
         elif successful:
-            self.nagios_exit("OK", f"BUILDS OK: {', '.join(successful)}")
+            self.nagios_exit("OK", ', '.join(successful))
         else:
             self.nagios_exit("UNKNOWN", "No repos/builds found")
 
@@ -136,10 +136,10 @@ class CheckDroneBuilds:
 
     def nagios_exit(self, status: string, message: string) -> NoReturn:
         codes = {
-            "OK"      : 0,
-            "WARNING" : 1,
-            "CRITICAL": 2,
-            "UNKNOWN" : 3
+            "OK" : 0,
+            "WARNING"   : 1,
+            "CRITICAL"  : 2,
+            "UNKNOWN"   : 3
         }
         print(f"{status} - {message}")
         sys.exit(codes[status])

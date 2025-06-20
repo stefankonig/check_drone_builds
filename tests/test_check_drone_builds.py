@@ -61,7 +61,7 @@ def check_builds(check: CheckDroneBuilds, repo: list, status: string, message: s
 
 def check_builds_ok(check: CheckDroneBuilds) -> None:
     repo = [get_all_repos_json()[0]] # first repo has successful build
-    check_builds(check, repo, "OK", "BUILDS OK: docker/test-1 - last succeeded: 1 day ago")
+    check_builds(check, repo, "OK", "docker/test-1 - last succeeded: 1 day ago")
 
 def test_check_builds_ok_with_time() -> None:
     check = CheckDroneBuilds(SERVER, TOKEN, NAMESPACE, 86400, 172800, True)
@@ -105,7 +105,7 @@ def check_builds_partial_failed(check: CheckDroneBuilds, status: string, message
 
 def test_check_builds_failed_partial_with_time_ok() -> None:
     check = CheckDroneBuilds(SERVER, TOKEN, NAMESPACE, 12182400, 12182600, True)
-    check_builds_partial_failed(check, "OK", "BUILDS OK: docker/test-3 - last succeeded: 140 days ago")
+    check_builds_partial_failed(check, "OK", "docker/test-3 - last succeeded: 140 days ago")
 
 def test_check_builds_failed_partial_with_time_critical() -> None:
     check = CheckDroneBuilds(SERVER, TOKEN, NAMESPACE, 86400, 12096000, True)
@@ -125,7 +125,7 @@ def test_check_builds_failed_partial_with_only_time_warning() -> None:
 
 def test_check_builds_failed_partial_without_time() -> None:
     check = CheckDroneBuilds(SERVER, TOKEN, NAMESPACE, 9999999999, 9999999999, True)
-    check_builds_partial_failed(check, "OK", "BUILDS OK: docker/test-3 - last succeeded: 140 days ago")
+    check_builds_partial_failed(check, "OK", "docker/test-3 - last succeeded: 140 days ago")
 
 def check_builds_empty_builds(check: CheckDroneBuilds) -> None:
     repo = [get_all_repos_json()[3]] # fourth repo has no builds
@@ -170,7 +170,7 @@ def test_check_builds_get_all_repos_multiple() -> None:
         call(repos[3]["namespace"], repos[3]["name"]),
     ])
     assert check.get_builds_for_repo.call_count == 4
-    check.nagios_exit.assert_called_once_with("OK", "BUILDS OK: docker/test-1 - last succeeded: 1 day ago, docker/test-2 - last succeeded: 1 day ago, docker/test-3 - last succeeded: 1 day ago, docker/test-4 - last succeeded: 1 day ago")
+    check.nagios_exit.assert_called_once_with("OK", "docker/test-1 - last succeeded: 1 day ago, docker/test-2 - last succeeded: 1 day ago, docker/test-3 - last succeeded: 1 day ago, docker/test-4 - last succeeded: 1 day ago")
 
 def test_check_builds_get_all_repos_no_namespace_to_filter() -> None:
     check = CheckDroneBuilds(SERVER, TOKEN, "", 86400, 172800, True)
@@ -197,7 +197,7 @@ def test_check_builds_get_all_repos_no_namespace_to_filter() -> None:
         call(repos[5]["namespace"], repos[5]["name"]),
     ])
     assert check.get_builds_for_repo.call_count == 6
-    check.nagios_exit.assert_called_once_with("OK", "BUILDS OK: docker/test-1 - last succeeded: 1 day ago, docker/test-2 - last succeeded: 1 day ago, docker/test-3 - last succeeded: 1 day ago, docker/test-4 - last succeeded: 1 day ago, random/test-666 - last succeeded: 1 day ago, random/test-777 - last succeeded: 1 day ago")
+    check.nagios_exit.assert_called_once_with("OK", "docker/test-1 - last succeeded: 1 day ago, docker/test-2 - last succeeded: 1 day ago, docker/test-3 - last succeeded: 1 day ago, docker/test-4 - last succeeded: 1 day ago, random/test-666 - last succeeded: 1 day ago, random/test-777 - last succeeded: 1 day ago")
 
 def test_check_builds_get_all_repos_multiple_statuses_critical() -> None:
     check = CheckDroneBuilds(SERVER, TOKEN, "", 86400, 172800, True)
