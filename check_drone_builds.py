@@ -45,8 +45,11 @@ class CheckDroneBuilds:
                 owner = repo.get("namespace")
                 name = repo.get("name")
                 slug = repo.get("slug")
+                active = repo.get("active")
                 if self.namespace and owner != self.namespace:
                     continue
+                if not active:
+                    continue # these repos are not setup to run any builds
             except Exception as e:
                 self.log.exception(str(e))
                 self.log.debug(json.dumps(repo))
@@ -58,7 +61,7 @@ class CheckDroneBuilds:
                 builds = self.get_builds_for_repo(owner, name)
                 if not builds:
                     unknown.append(slug)
-                    self.log.debug(f"No builds found for {slug}, skipping")
+                    self.log.debug(f"No builds found for {slug}, adding to unknown list")
                     continue
                 for build in builds:
                     if build.get("status") == "success":

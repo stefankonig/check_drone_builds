@@ -193,11 +193,10 @@ def test_check_builds_get_all_repos_no_namespace_to_filter() -> None:
         call(repos[1]["namespace"], repos[1]["name"]),
         call(repos[2]["namespace"], repos[2]["name"]),
         call(repos[3]["namespace"], repos[3]["name"]),
-        call(repos[4]["namespace"], repos[4]["name"]),
-        call(repos[5]["namespace"], repos[5]["name"]),
+        # repo 4/5/6 are inactive
     ])
-    assert check.get_builds_for_repo.call_count == 6
-    check.nagios_exit.assert_called_once_with("OK", "docker/test-1 - last succeeded: 1 day ago, docker/test-2 - last succeeded: 1 day ago, docker/test-3 - last succeeded: 1 day ago, docker/test-4 - last succeeded: 1 day ago, random/test-666 - last succeeded: 1 day ago, random/test-777 - last succeeded: 1 day ago")
+    assert check.get_builds_for_repo.call_count == 4
+    check.nagios_exit.assert_called_once_with("OK", "docker/test-1 - last succeeded: 1 day ago, docker/test-2 - last succeeded: 1 day ago, docker/test-3 - last succeeded: 1 day ago, docker/test-4 - last succeeded: 1 day ago")
 
 def test_check_builds_get_all_repos_multiple_statuses_critical() -> None:
     check = CheckDroneBuilds(SERVER, TOKEN, "", 86400, 172800, True)
@@ -259,14 +258,12 @@ def test_check_builds_get_all_repos_multiple_statuses_unknown() -> None:
             get_builds_json(repos[0]["namespace"], repos[0]["name"]),
             get_builds_json(repos[0]["namespace"], repos[0]["name"]),
             get_builds_json(repos[0]["namespace"], repos[0]["name"]),
-            get_builds_json(repos[0]["namespace"], repos[0]["name"]),
-            get_builds_json(repos[0]["namespace"], repos[0]["name"]),
             get_builds_json(repos[3]["namespace"], repos[3]["name"]),
         ]
 
         check.get_current_time.return_value = TIME
         check.check_builds()
-        check.nagios_exit.assert_called_once_with("UNKNOWN", "Unknown build status: random/test-777")
+        check.nagios_exit.assert_called_once_with("UNKNOWN", "Unknown build status: docker/test-4")
 
 def test_check_builds_get_all_repos_no_repos() -> None:
     check = CheckDroneBuilds(SERVER, TOKEN, "", 86400, 172800, True)
